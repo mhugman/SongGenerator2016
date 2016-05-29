@@ -1,0 +1,116 @@
+This script will take midi files (such as video game music) as input, and then
+translate this data into a series of vectors, one for each beat in the song. Each vector constitutes
+a chord, with notes in a particular harmonic relationship with each other. 
+
+The relationship between these vectors will then be analyzed, for instance the probability that a "C" will be 
+followed by an "A." This will be used to construct a transformation probability matrix, which
+contains the probability that any chord will be followed by any other chord. Possibly, it could
+generate say, three such matrices, where the probability of a chord at time n is correlated with
+the chord at times n - 1, n -2, and n - 3, for additional complexity. 
+
+These transformation matrices could then be used to generate new songs, given an initial seed (pick 
+a chord out of the library). 
+
+One additional complexity to take into account is sustained notes versus staccato. New notes would need
+to be plucked upon generation of a new chord, but if the same note is contained in the previous
+chord, it may be a sustained note, or plucked again. 
+
+Example song, with three channels: 
+
+[ 4   72   83 ]
+[ 4   62   87 ] 
+...
+[ 12  18   62 ] 
+
+Because of the 12 tone nature of western music, these can be classified as specific instances of certain
+chords, e.g. 
+
+C
+C7
+..
+G5
+
+But to avoid having to work with letters and such, we can just divide all numbers by 12 and take the
+modulus. e
+
+[ 4  0  11 ] 
+[ 4  2  3  ] 
+...
+[ 0  6   2  ] 
+
+This simplifies the chords in the easiest numerical way without having to classify them by letters. 
+The values should be ordered in increasing order first, before performing the division, that way
+the bass/root value is preserved. Any duplicate values should be removed first also. 
+
+We can then generate the master transformation matrix, which will be of dimension N x N, where
+N is number of all the possible chords. Let's calculate that real quick. There are 12 possible notes, 
+any of which could be contained in the chord.
+
+12c0 + 12c1 + 12c2 + 12c3 + ... + 12c12
+
+1 + 12 + 66 + 220 + 495 + 792 + 924 + 792 + 495 + 220 + 66 + 12 + 1
+
+= 4096
+
+So the matrix will be 4096 x 4096. Perhaps we could simplify this though by noting that it shouldn't 
+matter which of the 12 notes you start with, what matters is the relation of the notes. But that might
+be introducing too much, because it would assume a song sticks within one key. Not sure if we want to
+make that assumption. 
+
+In order to generate the probabilities, we tally up each time chord A is followed by chord B, or chord C
+etc. In other words, we can generate an accumulation matrix, again 4096 by 4096, where each instance
+of one chord followed by another increases an index on the matrix by one. 
+
+Perhaps taking into account the basic similarity between the 12 tones, we could generate the accumulation
+matrix by adding one in a diagonal across the matrix. If we see one instance of chord A being followed
+by chord B in key 1, that should also be evidence that the related chord C should be followed by chord D
+in key 2. But maybe we could increase the other values by one, but this particular value by 2, to 
+account for the particularities of this particular key. 
+
+Finally, to generate the probability, we just transform the accumulation matrix to make each row sum
+to one. 
+
+A typical song might be, lets say, 3 minutes long. If the tempo is 120 bpm, that's 360 total beats. 
+I'm thinking that if that beat is subdivided into say 16th notes, all those should be accumulated
+to create the chord for that one beat. 
+
+Of course chord changes in a song don't necessarily happen every beat, in fact most of the time they won't. 
+But what I'm hoping is that there will be a relatively high probability of a chord staying the same for
+awhile, so that we don't get crazy chord changes jumping around all the time. 
+
+How to account for triplets? That could be challenging...we'll cross that bridge when we come to it. 
+
+Once we generate a new song, we can probabilistically subdivide the chord, playing notes within it
+randomly across the 16th note divisions. 
+
+Each channel (instrument) will select notes from the chord. Perhaps we can set them with a certain bias, 
+so that a bass instrument will be more likely to play low note versions of the chord notes. 
+
+How to handle percussion? I'm thinking that for now, the user can just enter in a percussive
+pattern that will be repeated through the song. Using this kind of artificial intelligence for
+percussion would be another project. 
+
+I'm thinking also, we should generate a probability for notes starting and stopping, staying off, and 
+restarting. The chord value represents the notes that the instrument could play, but this probability
+determines whether the instrument actually plays them. Like a 2x2 matrix:  
+
+[ Note on, Note off ] x [Note on, note off] 
+
+Maybe eventually this could be based off the midi, but we could also just randomly generate it. 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
