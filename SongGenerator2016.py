@@ -22,9 +22,12 @@ pattern.
 
 '''
 
+from __future__ import print_function
 
 import mido
+#import sys
 import time
+import numpy
 from numpy import *
 from mido import MidiFile
 
@@ -50,17 +53,44 @@ def parseMidi(mid):
 
     # Exclude certain tracks from being parsed, such as percussion
     exclusions = ["Percussion"]
+    
+    
+    # Initialize the note Array 
+    noteArray = zeros((1,1,1), dtype=int)
+        
+    # First build the note Array vertically (one row for each track, excluding the one
+    # track we already accounted for in initializing the array
+    # go through the messages and add up all the delta times of the messages, so we can 
+    # figure out the maximum track length in clicks. This will let us us know how
+    # far to build out the array horizontally
+    
 
-    noteArray = zeros((1,1,1))
-    
+    maxTrackLength = 0
     for i, track in enumerate(mid.tracks[2:]):
-    
+        
+        trackLength = 0
+        for message in track:
+            trackLength = trackLength + message.time
+            
+        if trackLength > maxTrackLength: 
+            maxTrackLength = trackLength
+        
         noteArray = vstack((noteArray, [[[0]]]))
 
-    newNoteShape = noteArray.shape
-    newNoteArray = zeros(newNoteShape)
+    # Build the array horizontally, by adding empty vertical vectors for the length
+    # of the longest track
+        
+    emptyVector = zeros(noteArray.shape, dtype=int)
     
+    for x in range(maxTrackLength): 
+        noteArray = hstack((noteArray, emptyVector))
+        
+    prettyPrintArray(noteArray)
+        
+    '''
     for i, track in enumerate(mid.tracks[1:]):
+    
+        raise ValueError(len(track))
         #print 'Track {}: {}'.format(i, track.name)
         
         currentNotes = []
@@ -73,20 +103,101 @@ def parseMidi(mid):
                     
                     if message.type == "note_on": 
                                 
-                        currentNotes.append(float(message.note))
+                        currentNotes.append(message.note)
                     
                     elif message.type == "note_off": 
             
-                        currentNotes.remove(float(message.note))
+                        currentNotes.remove(message.note)
                         
                     if len(currentNotes) > 0:         
-                        newNoteArray[i] = currentNotes
+                        newNoteVector[i] = currentNotes
                         
-                    noteArray = hstack((noteArray, newNoteArray))
-                    
-                    newNoteArray = zeros(newNoteShape)
+                    noteArray = hstack((noteArray, newNoteVector))
+                    newNoteVector = zeros(newNoteShape, dtype=int)
+    '''
+    #raise ValueError(noteArray.shape[1])            
+    return noteArray
+    
+# Note: this is designed for 3D arrays, like for noteArray constructed in parseMidi
+def prettyPrintArray(inputArray): 
+
+    # in order to pretty print, we have to find the length of the i,jth entry, 
+    # in terms of how many entries are in the list, and how many digits those
+    # entries are
+    
+    #file = open("output.txt", "w")
+    
+    # Store the length of each i, jth entry in a matrix identical in size to the input matrix
+    # then when we pretty print, we can pick the longest length in each column to space out
+    # the entries
+    
+    lengthArray = zeros(inputArray.shape, dtype=int)
+    
+    # First fill in the values for the length array
+    for i in range(inputArray.shape[0]): 
+        for j in range(inputArray.shape[1]): 
+            
+            length = 0 
+            for entry in inputArray[i][j]: 
                 
-    print noteArray
+                # account for the length of the comma and space separating entries in the list
+                # (only applies after the first entry, when there are additional entries)
+                if length > 0 : 
+                    length = length + 2
+                
+                length = length + len(str(entry))
+                
+            lengthArray[i][j] = length
+    
+    
+    
+    # Then actually print the values of the input array using that length information
+    
+    # But first lets print a timeline that let's visually index the entries
+    
+    
+    for j in range(inputArray.shape[1]): 
+            
+        print("t = " + str(j), end="")    
+            
+        # find max length over all entries in this column in the lengthArray
+        maxLength = 0
+        for k in range(lengthArray.shape[0]): 
+           if lengthArray[k][j] > maxLength: 
+                maxLength = lengthArray[k][j]
+            
+        # then utilize length information for the spacing between the entries
+        lengthEntry = 4 + len(str(j))
+        numSpaces = maxLength - lengthEntry + 8
+            
+        for x in range(numSpaces): 
+            print(" ", end="")
+    
+    print("\n")         
+            
+    for i in range(inputArray.shape[0]): 
+        for j in range(inputArray.shape[1]): 
+            
+            # first print the entry    
+            print(inputArray[i][j], end="")
+            
+            
+            # find max length over all entries in this column in the lengthArray
+            maxLength = 0
+            for k in range(lengthArray.shape[0]): 
+                if lengthArray[k][j] > maxLength: 
+                    maxLength = lengthArray[k][j]
+            
+            # then utilize length information for the spacing between the entries
+            numSpaces = maxLength - lengthArray[i][j] + 6
+            
+            for x in range(numSpaces): 
+                print(" ", end="")
+            
+        
+        print("\n")        
+        
+    
 
 def playMidi(mid): 
 
@@ -96,13 +207,26 @@ def playMidi(mid):
 def Main(): 
     
     midiSetup()
-    parseMidi(MidiFile('midi/Smbtheme.mid'))
+    noteArray = parseMidi(MidiFile('midi/Smbtheme.mid'))
+    
+    #print(noteArray)
+    
+    #prettyPrintArray(noteArray)
+    
     
 Main()
 
 
 '''
 TESTING
+
+mid = MidiFile('midi/ddstage.mid')
+    for i, track in enumerate(mid.tracks):
+        print('Track {}: {}'.format(i, track.name))
+        for message in track:
+            print(message)
+
+
 
 mid = MidiFile('midi/Smbtheme.mid')
 
