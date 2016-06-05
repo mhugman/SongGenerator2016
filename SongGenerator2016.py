@@ -22,6 +22,22 @@ pattern.
 
 '''
 
+'''
+######################
+TO DO
+
+Figure out why new_song.mid is playing so fast. It may have something to do with track 4, since
+everything else is basically the same it seems like, when you print_tracks(). length is different
+for some reason
+
+NEXT
+
+now that I can parse and create midi files, I just have to analyze them for patterns and develop
+my probability matrices
+
+######################
+'''
+
 from __future__ import print_function
 
 import mido
@@ -30,11 +46,30 @@ import time
 import numpy
 from numpy import *
 from mido import MidiFile
+from mido.midifiles import MidiTrack
+from mido import MetaMessage
+from mido import Message
+
+inport = mido.open_input(u'MidiMock OUT')
+outport = mido.open_output()
+
+def unique(a):
+    """ return the list with duplicate elements removed """
+    return list(set(a))
+
+def intersect(a, b):
+    """ return the intersection of two lists """
+    return list(set(a) & set(b))
+
+def union(a, b):
+    """ return the union of two lists """
+    return list(set(a) | set(b))
 
 def midiSetup(): 
 
     inport = mido.open_input(u'MidiMock OUT')
     outport = mido.open_output()
+
 
 
 '''
@@ -52,7 +87,7 @@ input parameter must be a mido midi object, MidiFile([filename])
 def parseMidi(mid): 
 
     # Exclude certain tracks from being parsed, such as percussion
-    exclusions = ["Percussion"]
+    exclusions = []
     
     
     # Initialize the note Array 
@@ -66,7 +101,7 @@ def parseMidi(mid):
     
 
     maxTrackLength = 0
-    for i, track in enumerate(mid.tracks[2:]):
+    for i, track in enumerate(mid.tracks[1:]):
         
         trackLength = 0
         for message in track:
@@ -74,49 +109,130 @@ def parseMidi(mid):
             
         if trackLength > maxTrackLength: 
             maxTrackLength = trackLength
-        
-        noteArray = vstack((noteArray, [[[0]]]))
+        if i > 0: 
+            noteArray = vstack((noteArray, [[[0]]]))
+            
+    #prettyPrintArray(noteArray)
 
     # Build the array horizontally, by adding empty vertical vectors for the length
     # of the longest track
         
     emptyVector = zeros(noteArray.shape, dtype=int)
     
+    #raise ValueError(maxTrackLength)
+    
     for x in range(maxTrackLength): 
         noteArray = hstack((noteArray, emptyVector))
+    
+    #print(noteArray.shape)   
+    #prettyPrintArray(noteArray)
         
-    prettyPrintArray(noteArray)
-        
-    '''
+    
     for i, track in enumerate(mid.tracks[1:]):
     
-        raise ValueError(len(track))
         #print 'Track {}: {}'.format(i, track.name)
         
         currentNotes = []
         
         if track.name not in exclusions: 
-        
-            for message in track:
             
-                if message.type != "meta message":
+            currentTime = 0
+            for message in track:
+                
+                if message.type == "note_on" or message.type == "note_off":
+                    prevTime = currentTime
+                    currentTime = currentTime + message.time
                     
+                    prevNotes = currentNotes
+                    
+                    # Fill in all the values since the previous message, and up to 
+                    # but not including the time of the current message, with the
+                    # previous notes
+                    if len(currentNotes) > 0:     
+                        deltaTime = currentTime - prevTime
+                        for j in range(0, deltaTime - 1):     
+                            noteArray[i][currentTime - 1 - j] = prevNotes
+                    
+                    # update the current Notes being played with the information in the
+                    # message
                     if message.type == "note_on": 
                                 
-                        currentNotes.append(message.note)
+                        currentNotes.append(message.note + 1)
                     
                     elif message.type == "note_off": 
             
-                        currentNotes.remove(message.note)
+                        currentNotes.remove(message.note + 1)
                         
-                    if len(currentNotes) > 0:         
-                        newNoteVector[i] = currentNotes
+                    # fill in the value for this particular time with the current Notes
+                    if len(currentNotes) > 0:     
+                        noteArray[i][currentTime] = currentNotes
                         
-                    noteArray = hstack((noteArray, newNoteVector))
-                    newNoteVector = zeros(newNoteShape, dtype=int)
-    '''
+    
     #raise ValueError(noteArray.shape[1])            
     return noteArray
+
+'''
+This function will take a 3D numpy note Array (e.g. parsed from a midi file), and turn it into 
+a midi file which can be played back. 
+'''
+def createMidi(inputArray):
+
+    with MidiFile() as mid:
+    
+        # add an empty first track (for testing)
+    
+        mid.add_track(name= str(0))
+        track = mid.tracks[0]
+            
+        track.append(MetaMessage('time_signature', numerator=4, denominator=4, clocks_per_click=96, notated_32nd_notes_per_beat=8, time=0))
+        track.append(MetaMessage('set_tempo', tempo=571428, time=0))
+    
+        for i in range(inputArray.shape[0]): 
+            
+            mid.add_track(name= str(i + 1))
+            track = mid.tracks[i + 1]
+            
+            track.append(Message('control_change', channel = i, control=0, value=0, time=0))
+            track.append(Message('program_change', channel = i, program=26, time=0))
+            track.append(MetaMessage('time_signature', numerator=4, denominator=4, clocks_per_click=96, notated_32nd_notes_per_beat=8, time=0))
+            track.append(MetaMessage('set_tempo', tempo=571428, time=0))
+            
+            currentNotes = []
+            
+            timeSinceLastMessage = 0
+            for j in range(inputArray.shape[1]):
+                
+                prevNotes = currentNotes
+                currentNotes = inputArray[i][j]
+                
+                # only generate a message if the note values have changed. If they do, generate
+                # a message and reset timeSinceLastMessage to 0.               
+                messageGenerated = False
+                for n in union(prevNotes, currentNotes): 
+                    # if the note value is 0 don't play it, that represents silence
+                    if n not in prevNotes and n != 0: 
+                        
+                        # remember that we added 1 to the value of the note to store it in the 
+                        # array, so to play it back, subtract 1
+                        track.append(Message('note_on', channel = i, note= n - 1, velocity=64, time=timeSinceLastMessage))
+                        messageGenerated = True
+                    elif n not in currentNotes and n != 0: 
+                        
+                        track.append(Message('note_off', channel = i, note= n - 1, velocity=64, time=timeSinceLastMessage))
+                        messageGenerated = True
+                     
+                # if a message was generated (either note_on or note_off), then reset the time
+                # since last message to 0
+                if messageGenerated == True: 
+                    # the value here resets to 1 instead of 0, because its been at least one tick 
+                    # since the last message
+                    timeSinceLastMessage = 1
+                else: 
+                    # if there was no message, simply increment the time since the last message
+                    timeSinceLastMessage = timeSinceLastMessage + 1
+
+        mid.save('midi/new_song.mid')
+
     
 # Note: this is designed for 3D arrays, like for noteArray constructed in parseMidi
 def prettyPrintArray(inputArray): 
@@ -203,11 +319,25 @@ def playMidi(mid):
 
     for message in mid.play():
         outport.send(message)
+        
+def printMidiMessages(mid): 
+    for i, track in enumerate(mid.tracks):
+        print('Track {}: {}'.format(i, track.name))
+        for message in track:
+            print(message)
 
 def Main(): 
     
-    midiSetup()
+    #midiSetup()
     noteArray = parseMidi(MidiFile('midi/Smbtheme.mid'))
+    createMidi(noteArray)
+    
+    #print(MidiFile('midi/Smbtheme.mid').length)
+    print(MidiFile('midi/new_song.mid').print_tracks())
+    
+    #printMidiMessages(MidiFile('midi/new_song.mid'))
+    #playMidi(MidiFile('midi/new_song.mid'))
+    #playMidi(MidiFile('midi/Smbtheme.mid'))
     
     #print(noteArray)
     
