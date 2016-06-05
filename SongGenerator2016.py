@@ -22,6 +22,18 @@ pattern.
 
 '''
 
+from __future__ import print_function
+
+import mido
+#import sys
+import time
+import numpy
+from numpy import *
+from mido import MidiFile
+from mido.midifiles import MidiTrack
+from mido import MetaMessage
+from mido import Message
+
 '''
 ######################
 TO DO
@@ -37,18 +49,6 @@ my probability matrices
 
 ######################
 '''
-
-from __future__ import print_function
-
-import mido
-#import sys
-import time
-import numpy
-from numpy import *
-from mido import MidiFile
-from mido.midifiles import MidiTrack
-from mido import MetaMessage
-from mido import Message
 
 inport = mido.open_input(u'MidiMock OUT')
 outport = mido.open_output()
@@ -70,6 +70,16 @@ def midiSetup():
     inport = mido.open_input(u'MidiMock OUT')
     outport = mido.open_output()
 
+# returns the union of two 2d numpy arrays
+def union2d(A,B): 
+    union = []
+    for a in A: 
+        union.append(a)
+    for b in B: 
+        if b not in A: 
+            union.append(b)
+    return union
+        
 
 
 '''
@@ -91,7 +101,7 @@ def parseMidi(mid):
     
     
     # Initialize the note Array 
-    noteArray = zeros((1,1,1), dtype=int)
+    noteArray = zeros((1,1,1), dtype=(int,3))
         
     # First build the note Array vertically (one row for each track, excluding the one
     # track we already accounted for in initializing the array
@@ -99,7 +109,6 @@ def parseMidi(mid):
     # figure out the maximum track length in clicks. This will let us us know how
     # far to build out the array horizontally
     
-
     maxTrackLength = 0
     for i, track in enumerate(mid.tracks[1:]):
         
@@ -110,14 +119,16 @@ def parseMidi(mid):
         if trackLength > maxTrackLength: 
             maxTrackLength = trackLength
         if i > 0: 
-            noteArray = vstack((noteArray, [[[0]]]))
+            noteArray = vstack((noteArray, [[[(0,0,0)]]]))
+            
+    #raise ValueError(noteArray)
             
     #prettyPrintArray(noteArray)
-
+    
     # Build the array horizontally, by adding empty vertical vectors for the length
     # of the longest track
         
-    emptyVector = zeros(noteArray.shape, dtype=int)
+    emptyVector = zeros((noteArray.shape[0],1,1), dtype=(int,3))
     
     #raise ValueError(maxTrackLength)
     
@@ -143,12 +154,17 @@ def parseMidi(mid):
                     prevTime = currentTime
                     currentTime = currentTime + message.time
                     
-                    prevNotes = currentNotes
+                    # previous notes are the same as (not yet updated) current notes, 
+                    # but the third value is 0 instead of 1 (denoting the fact that 
+                    # the note is sustained, rather than hit)
+                    prevNotes = []
+                    for x in currentNotes: 
+                         prevNotes.append((x[0], x[1], 0))
                     
                     # Fill in all the values since the previous message, and up to 
                     # but not including the time of the current message, with the
                     # previous notes
-                    if len(currentNotes) > 0:     
+                    if len(prevNotes) > 0:     
                         deltaTime = currentTime - prevTime
                         for j in range(0, deltaTime - 1):     
                             noteArray[i][currentTime - 1 - j] = prevNotes
@@ -157,15 +173,17 @@ def parseMidi(mid):
                     # message
                     if message.type == "note_on": 
                                 
-                        currentNotes.append(message.note + 1)
+                        currentNotes.append((message.note + 1, message.velocity,1))
                     
                     elif message.type == "note_off": 
-            
-                        currentNotes.remove(message.note + 1)
-                        
+                        for x in currentNotes: 
+                            if x[0] == message.note + 1: 
+                                 currentNotes.remove(x)
+                        #currentNotes.remove((message.note + 1, message.velocity))   
+                     
                     # fill in the value for this particular time with the current Notes
                     if len(currentNotes) > 0:     
-                        noteArray[i][currentTime] = currentNotes
+                        noteArray[i][currentTime] = asarray(currentNotes)
                         
     
     #raise ValueError(noteArray.shape[1])            
@@ -197,28 +215,38 @@ def createMidi(inputArray):
             track.append(MetaMessage('time_signature', numerator=4, denominator=4, clocks_per_click=96, notated_32nd_notes_per_beat=8, time=0))
             track.append(MetaMessage('set_tempo', tempo=571428, time=0))
             
-            currentNotes = []
+            currentNotes = asarray([(0,0,0)])
             
             timeSinceLastMessage = 0
             for j in range(inputArray.shape[1]):
                 
-                prevNotes = currentNotes
+                # previous notes are the same as (not yet updated) current notes, 
+                # but the third value is 0 instead of 1 (denoting the fact that 
+                # the note is sustained, rather than hit)
+                prevNotesList = []
+                for x in currentNotes: 
+                    prevNotesList.append((x[0], x[1], 0))
+                prevNotes = asarray(prevNotesList)
                 currentNotes = inputArray[i][j]
+                currentNoteValues = [x[0] for x in currentNotes]
                 
-                # only generate a message if the note values have changed. If they do, generate
-                # a message and reset timeSinceLastMessage to 0.               
+                # Generate a note_off message if the note is in prevNotes but not in currentNotes. 
+                # Generate a note_on message if the third value of the note is 1 (this represents note on)          
                 messageGenerated = False
-                for n in union(prevNotes, currentNotes): 
-                    # if the note value is 0 don't play it, that represents silence
-                    if n not in prevNotes and n != 0: 
+                for n in union2d(prevNotes, currentNotes): 
+                    # if the first note value is 0 don't play it, that represents silence
+                    if n[2] == 1 and n[0] != 0: 
                         
                         # remember that we added 1 to the value of the note to store it in the 
                         # array, so to play it back, subtract 1
-                        track.append(Message('note_on', channel = i, note= n - 1, velocity=64, time=timeSinceLastMessage))
-                        messageGenerated = True
-                    elif n not in currentNotes and n != 0: 
+                        noteValue = n[0] - 1
+                        noteVelocity = n[1]
                         
-                        track.append(Message('note_off', channel = i, note= n - 1, velocity=64, time=timeSinceLastMessage))
+                        track.append(Message('note_on', channel = i, note= noteValue, velocity=noteVelocity, time=timeSinceLastMessage))
+                        messageGenerated = True
+                    elif n[0] not in currentNoteValues and n[0] != 0: 
+                        
+                        track.append(Message('note_off', channel = i, note= noteValue, velocity=noteVelocity, time=timeSinceLastMessage))
                         messageGenerated = True
                      
                 # if a message was generated (either note_on or note_off), then reset the time
@@ -247,7 +275,7 @@ def prettyPrintArray(inputArray):
     # then when we pretty print, we can pick the longest length in each column to space out
     # the entries
     
-    lengthArray = zeros(inputArray.shape, dtype=int)
+    lengthArray = zeros((inputArray.shape[0], inputArray.shape[1]), dtype=int)
     
     # First fill in the values for the length array
     for i in range(inputArray.shape[0]): 
@@ -265,7 +293,7 @@ def prettyPrintArray(inputArray):
                 
             lengthArray[i][j] = length
     
-    
+    #raise ValueError(lengthArray)
     
     # Then actually print the values of the input array using that length information
     
@@ -330,24 +358,38 @@ def Main():
     
     #midiSetup()
     noteArray = parseMidi(MidiFile('midi/Smbtheme.mid'))
+    
+    #prettyPrintArray(noteArray)
     createMidi(noteArray)
     
-    #print(MidiFile('midi/Smbtheme.mid').length)
+    mid = MidiFile('midi/new_song.mid')
+    
+    
+    
+    #print(MidiFile('midi/new_song.mid').length)
     print(MidiFile('midi/new_song.mid').print_tracks())
     
     #printMidiMessages(MidiFile('midi/new_song.mid'))
-    #playMidi(MidiFile('midi/new_song.mid'))
+    #playMidi(mid)
     #playMidi(MidiFile('midi/Smbtheme.mid'))
     
     #print(noteArray)
     
-    #prettyPrintArray(noteArray)
+    
     
     
 Main()
 
 
 '''
+
+for i, track in enumerate(mid.tracks[1:]):
+        
+        trackLength = 0
+        for message in track:
+            trackLength = trackLength + message.time
+        print(trackLength)
+
 TESTING
 
 mid = MidiFile('midi/ddstage.mid')
