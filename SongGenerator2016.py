@@ -229,12 +229,15 @@ def createMidi(inputArray):
                 prevNotes = asarray(prevNotesList)
                 currentNotes = inputArray[i][j]
                 currentNoteValues = [x[0] for x in currentNotes]
+                prevNoteValues = [x[0] for x in prevNotes]
+                
                 
                 # Generate a note_off message if the note is in prevNotes but not in currentNotes. 
                 # Generate a note_on message if the third value of the note is 1 (this represents note on)          
                 messageGenerated = False
                 for n in union2d(prevNotes, currentNotes): 
                     # if the first note value is 0 don't play it, that represents silence
+                    # send a note_on  message if the third note value is 1
                     if n[2] == 1 and n[0] != 0: 
                         
                         # remember that we added 1 to the value of the note to store it in the 
@@ -244,11 +247,16 @@ def createMidi(inputArray):
                         
                         track.append(Message('note_on', channel = i, note= noteValue, velocity=noteVelocity, time=timeSinceLastMessage))
                         messageGenerated = True
+                    # send a note_off message if the note is no longer being played
                     elif n[0] not in currentNoteValues and n[0] != 0: 
                         
                         track.append(Message('note_off', channel = i, note= noteValue, velocity=noteVelocity, time=timeSinceLastMessage))
                         messageGenerated = True
-                     
+                    # send a note_off message if the note we just turned on was the same as a note already
+                    # being played (a repeat note)
+                    elif n[2] == 1 and n[0] in prevNoteValues and n[0] != 0: 
+                        track.append(Message('note_off', channel = i, note= noteValue, velocity=noteVelocity, time=timeSinceLastMessage))
+                        messageGenerated = True
                 # if a message was generated (either note_on or note_off), then reset the time
                 # since last message to 0
                 if messageGenerated == True: 
@@ -420,6 +428,10 @@ print mido.get_output_names()
 
 for message in mid.play():
     outport.send(message)
+    
+if j == 480 and i ==3: 
+                    raise ValueError(currentNotes, prevNotes, timeSinceLastMessage)
+                
 
 
 #outport.send(mido.Message('note_on', note=60, velocity=100))
