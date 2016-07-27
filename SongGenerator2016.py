@@ -33,14 +33,25 @@ from mido import MidiFile
 from mido.midifiles import MidiTrack
 from mido import MetaMessage
 from mido import Message
+import math
+#from operator import mul    # or mul=lambda x,y:x*y
+#from fractions import Fraction
+import random
 
 '''
 ######################
 TO DO
 
-Figure out why new_song.mid is playing so fast. It may have something to do with track 4, since
+1. Figure out why new_song.mid is playing so fast. It may have something to do with track 4, since
 everything else is basically the same it seems like, when you print_tracks(). length is different
 for some reason
+
+For now, I'm just going to manually adjust the tempo, can't figure this out
+
+2. Make sure that repeated notes work correctly. The midi messages for the drum track of SMB theme
+aren't matching up exactly when deconstructed into a matrix and reconstructed
+
+
 
 NEXT
 
@@ -52,6 +63,11 @@ my probability matrices
 
 inport = mido.open_input(u'MidiMock OUT')
 outport = mido.open_output()
+
+'''
+def nCk(n,k): 
+    return int( reduce(mul, (Fraction(n-i, i+1) for i in range(k)), 1) )
+'''
 
 def unique(a):
     """ return the list with duplicate elements removed """
@@ -97,7 +113,7 @@ input parameter must be a mido midi object, MidiFile([filename])
 def parseMidi(mid): 
 
     # Exclude certain tracks from being parsed, such as percussion
-    exclusions = []
+    exclusions = ["Percussion"]
     
     
     # Initialize the note Array 
@@ -182,18 +198,210 @@ def parseMidi(mid):
                         #currentNotes.remove((message.note + 1, message.velocity))   
                      
                     # fill in the value for this particular time with the current Notes
-                    if len(currentNotes) > 0:     
-                        noteArray[i][currentTime] = asarray(currentNotes)
+                    if len(currentNotes) > 0:    
+                        try:  
+                            noteArray[i][currentTime] = asarray(currentNotes)
+                        except: 
+                            raise ValueError(message, i, currentTime, currentNotes)
                         
     
     #raise ValueError(noteArray.shape[1])            
     return noteArray
 
-'''
-This function will take a 3D numpy note Array (e.g. parsed from a midi file), and turn it into 
-a midi file which can be played back. 
-'''
+def createArray(): 
+    '''
+    This function will create a note array from scratch, without input from a midi file like the parseMidi function
+    '''
+    
+    notes = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+    song_length = 7000
+    num_tracks = 5
+    key = random.choice(notes)
+    
+    # Initialize the note Array 
+    noteArray = zeros((1,1,1), dtype=(int,3))
+    
+    # Build array vertically
+    for i in range(num_tracks): 
+        noteArray = vstack((noteArray, [[[(0,0,0)]]]))
+    
+    # Build the array horizontally
+    emptyVector = zeros((noteArray.shape[0],1,1), dtype=(int,3))
+    
+    for x in range(song_length): 
+        noteArray = hstack((noteArray, emptyVector))
+        
+    chordProgression = generateChordProgression()
+    
+    
+    
+    for track in range(num_tracks): 
+    
+        
+    
+        # i tracks where we are in the chord progression
+        i = 0
+        # j tracks how long we've been playing the chord
+        j = 0
+        # k tracks how long we've been playing a note
+        k = 0
+        
+        # Initialize the first note we're gonna play before entering the loop
+        currentChord = chordProgression[0]
+        possibleNotes = generatePossibleNotes(currentChord)
+        currentNotes = [(random.choice(possibleNotes) + 1,random.randint(0,127) ,1)]
+        noteLength = 1 + random.randint(0, currentChord["length"] - 1)
+        noteArray[track][0] = asarray(currentNotes)
+        
+        
+        for t in range(1,song_length): 
+    
+            # previous notes are the same as (not yet updated) current notes, 
+            # but the third value is 0 instead of 1 (denoting the fact that 
+            # the note is sustained, rather than hit)
+            prevNotes = []
+            for x in currentNotes: 
+                prevNotes.append((x[0], x[1], 0))
+        
+            
+        
+            # if we've played the chord for its full length, switch to the next chord
+            if j > currentChord["length"]: 
+                i = i + 1
+                if i < len(chordProgression): 
+                    currentChord = chordProgression[i]
+                else: 
+                    i = 0
+                    currentChord = chordProgression[i]
+                j = 0
+        
+            possibleNotes = generatePossibleNotes(currentChord)
+        
+            if k > noteLength: 
+                currentNotes = [(random.choice(possibleNotes) + 1,random.randint(0,127) ,1)]
+                noteLength = 1 + random.randint(0, currentChord["length"] - j)
+                k = 0
+            else: 
+                currentNotes = prevNotes
+            
+            #raise ValueError(noteArray)
+            try: 
+                noteArray[track][t] = asarray(currentNotes)
+            except: 
+                raise ValueError(track, t, currentNotes)
+            
+            
+        
+            j = j + 1
+            k = k + 1
+            
+            
+    return noteArray
+    
+def generateChordProgression(): 
+
+    '''
+    Generates a chord progression, with the data structure: 
+    [ {"root" : r, "notes" : [...], "length" : l}, {...}, ... {...} ]
+    
+    where the root is one of the 12 possible tones, and the notes are all the additional notes
+    stacked onto it. E.g. a standard major chord is 1,3,5, and if the root is 4, then the chord
+    will have the notes 4, 4 + 3, 4 + 5 = 4, 7, 9
+    
+    '''
+    
+    # note 0 corresponds with a C
+    notes = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+    
+    numChords = random.randint(2,12)
+    
+    chordProgression = []
+    
+    rootProgression = []
+    for n in range(numChords): 
+        root = random.choice(notes)
+        rootProgression.append(root)
+    
+    chordList = []
+    
+    for r in rootProgression: 
+    
+        chordSize = random.randint(3,12)
+    
+        chordNotes = random.sample(notes[1:], chordSize - 1)
+        
+        chordLength = random.randint(1,40)
+        
+        chord = {"root" : r, "notes" : chordNotes, "length" : chordLength}
+        
+        chordProgression.append(chord)
+        
+    return chordProgression
+    
+def generatePossibleNotes(chord):
+    '''
+    Generates a set of possible notes from a given chord, using its structure
+    '''
+    
+    
+    
+    root = chord["root"]
+    additional_notes = chord["notes"]
+    
+    baseNotes = [root ]
+    
+    for n in additional_notes: 
+        note = root + n
+        baseNotes.append(note)
+    
+    # keep adding multiples of the base notes to all the possible notes up to the highest 127    
+    multiple = 1
+    
+    possibleNotes = baseNotes[:]
+    
+    end = False
+    y = 0
+    while end == False: 
+    
+        noteMultiples = []
+        for n in baseNotes: 
+            noteMultiple = n + multiple * 12
+            if noteMultiple <= 127: 
+                noteMultiples.append(noteMultiple)
+        # if no multiples were added to the list, all the values are over 127 and we should stop
+        if len(noteMultiples) > 0: 
+            for m in noteMultiples: 
+                possibleNotes.append(m)
+        else: 
+            end = True
+            
+        #raise ValueError(root, additional_notes, baseNotes, possibleNotes)
+        #print(root, additional_notes, baseNotes, possibleNotes)
+        y = y + 1
+        multiple = multiple + 1
+        
+    
+    return possibleNotes
+        
+        
+    
+    
+    
+    
+        
+
 def createMidi(inputArray):
+
+    '''
+    This function will take a 3D numpy note Array (e.g. parsed from a midi file), and turn it into 
+    a midi file which can be played back. 
+    '''
+    # Smb theme
+    TEMPO = 571428 * 5
+    # Smb underwater
+    #TEMPO = 272727 * 5
+    # Smb castle
+    #TEMPO = 666666
 
     with MidiFile() as mid:
     
@@ -203,7 +411,7 @@ def createMidi(inputArray):
         track = mid.tracks[0]
             
         track.append(MetaMessage('time_signature', numerator=4, denominator=4, clocks_per_click=96, notated_32nd_notes_per_beat=8, time=0))
-        track.append(MetaMessage('set_tempo', tempo=571428, time=0))
+        track.append(MetaMessage('set_tempo', tempo=TEMPO, time=0))
     
         for i in range(inputArray.shape[0]): 
             
@@ -213,7 +421,7 @@ def createMidi(inputArray):
             track.append(Message('control_change', channel = i, control=0, value=0, time=0))
             track.append(Message('program_change', channel = i, program=26, time=0))
             track.append(MetaMessage('time_signature', numerator=4, denominator=4, clocks_per_click=96, notated_32nd_notes_per_beat=8, time=0))
-            track.append(MetaMessage('set_tempo', tempo=571428, time=0))
+            track.append(MetaMessage('set_tempo', tempo=TEMPO, time=0))
             
             currentNotes = asarray([(0,0,0)])
             
@@ -365,7 +573,10 @@ def printMidiMessages(mid):
 def Main(): 
     
     #midiSetup()
-    noteArray = parseMidi(MidiFile('midi/Smbtheme.mid'))
+    #noteArray = parseMidi(MidiFile('midi/SmbTheme.mid'))
+    noteArray = createArray()
+    
+    #printMidiMessages(MidiFile('midi/sm1castl.mid'))
     
     #prettyPrintArray(noteArray)
     createMidi(noteArray)
@@ -375,10 +586,10 @@ def Main():
     
     
     #print(MidiFile('midi/new_song.mid').length)
-    print(MidiFile('midi/new_song.mid').print_tracks())
+    #print(MidiFile('midi/new_song.mid').print_tracks())
     
     #printMidiMessages(MidiFile('midi/new_song.mid'))
-    #playMidi(mid)
+    playMidi(mid)
     #playMidi(MidiFile('midi/Smbtheme.mid'))
     
     #print(noteArray)
