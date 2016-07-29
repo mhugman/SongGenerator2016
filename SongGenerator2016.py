@@ -77,6 +77,15 @@ have to fix midi file creation, not sure if its set up to allow this)
 
 Add chord progression under the pretty print array
 
+implement ability to generate a random function instead of just a sine wave
+
+implement patterns and rhythm
+
+implement ability to combine target function with pattern of random selection of notes from chord
+
+instead of just picking the closest note to the target, arrange the possible notes in a stack and pick from the
+k nearest neighbors
+
 
 '''
 

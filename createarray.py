@@ -20,6 +20,7 @@ import random
 from randomfunctions import *
 from generatechordprogression import *
 from generatepossiblenotes import *
+from targetfunctions import *
 
 def createArray(): 
     '''
@@ -29,7 +30,7 @@ def createArray():
     #### TWEAKABLE PARAMETERS ####
     
     num_tracks = 3
-    
+    '''
     # trackShift determines how much to shift the sine function horizontally
     trackShift = {
     
@@ -45,6 +46,7 @@ def createArray():
         1: round(random.normalvariate(0.01,0.002), 3), 
         2: round(random.normalvariate(0.01,0.002), 3)
     }
+    '''
     
     
     song_length = int(round(random.normalvariate(7000,500)))
@@ -54,6 +56,23 @@ def createArray():
     silenceProb = random.randint(0,50)  # Should be between 0 and 100 (percent)
     
     
+    
+    
+    # Specify which tracks are bass, mid, and treble to control their likely range of notes
+    trackVoices = {
+        0 : "bass", 
+        1 : "mid", 
+        2 : "treble"
+    
+    }
+    
+    
+    trackTargetNotes = {
+        0: blendTargetFunctions(song_length, round(random.normalvariate(0.01,0.002), 3), int(round(random.normalvariate(500,50))), 40, 20, 0.8), 
+        1: blendTargetFunctions(song_length, round(random.normalvariate(0.01,0.002), 3), int(round(random.normalvariate(500,50))), 60, 20, 0.2), 
+        2: blendTargetFunctions(song_length, round(random.normalvariate(0.01,0.002), 3), int(round(random.normalvariate(500,50))), 80, 20, 0.5)
+    }
+        
     ##################
      
     notes = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
@@ -63,13 +82,6 @@ def createArray():
     key = random.choice(notes)
     mode = random.choice(modes)
     
-    # Specify which tracks are bass, mid, and treble to control their likely range of notes
-    trackVoices = {
-        0 : "bass", 
-        1 : "mid", 
-        2 : "treble"
-    
-    }
     
     # Initialize the note Array 
     noteArray = zeros((1,1,1), dtype=(int,3))
@@ -130,23 +142,7 @@ def createArray():
         
             possibleNotes = generatePossibleNotes(currentChord)
             
-            ### Modification 1: instead of picking notes randomly from possible notes, use
-            ### a sine function and pick notes closest to that
-            
-            # Add a modifier to the targetnote mean based on the voice (bass, mid, treble) 
-            # of the track
-            
-            if trackVoices[track] == "bass" : 
-                modifier = 30 * 0.75
-            elif trackVoices[track] == "mid" :
-                modifier = 60 * 0.75
-            elif trackVoices[track] == "treble" :
-                modifier = 90 * 0.75
-            
-            targetNoteMean = (math.sin(trackMod[track] * t - trackShift[track] * track) + 1) * modifier
-            targetNoteSigma = 5
-            
-            targetNote = random.normalvariate(targetNoteMean, targetNoteSigma)
+            targetNote = trackTargetNotes[track][t]
             
             #print(targetNote)
             
