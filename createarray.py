@@ -21,6 +21,7 @@ from randomfunctions import *
 from generatechordprogression import *
 from generatepossiblenotes import *
 from targetfunctions import *
+from plotNotes import *
 
 def createArray(): 
     '''
@@ -30,24 +31,6 @@ def createArray():
     #### TWEAKABLE PARAMETERS ####
     
     num_tracks = 3
-    '''
-    # trackShift determines how much to shift the sine function horizontally
-    trackShift = {
-    
-        0: int(round(random.normalvariate(500,50))), 
-        1: int(round(random.normalvariate(500,50))), 
-        2: int(round(random.normalvariate(500,50)))
-    }
-    
-    # trackMod determines how much to stretch the sine function horizontally
-    trackMod = {
-    
-        0: round(random.normalvariate(0.01,0.002), 3), 
-        1: round(random.normalvariate(0.01,0.002), 3), 
-        2: round(random.normalvariate(0.01,0.002), 3)
-    }
-    '''
-    
     
     song_length = int(round(random.normalvariate(7000,500)))
     if song_length < 100: 
@@ -55,23 +38,67 @@ def createArray():
     
     silenceProb = random.randint(0,50)  # Should be between 0 and 100 (percent)
     
-    
-    
-    
     # Specify which tracks are bass, mid, and treble to control their likely range of notes
-    trackVoices = {
-        0 : "bass", 
-        1 : "mid", 
-        2 : "treble"
+    trackProperties = {
+        0 : {
+            "voice" : "bass", 
+            "polyphonic" : False, 
+        
+        },
+        1 : {
+            "voice" : "mid", 
+            "polyphonic" : True, 
+        
+        },
+        2 : {
+            "voice" : "treble", 
+            "polyphonic" : False, 
+        
+        }, 
     
     }
     
+    # Variables to be used when computing target functions for each track
+    trackVariables = {
+        0 : {
+            "coefficient" : round(random.normalvariate(0.01,0.002), 3), 
+            "shift" : int(round(random.normalvariate(500,50))), 
+            "mean" : 50, 
+            "sigma" : 12, 
+            "bias" : 0.4
+        
+        },
+        1 : {
+            "coefficient" : round(random.normalvariate(0.01,0.002), 3), 
+            "shift" : int(round(random.normalvariate(500,50))), 
+            "mean" : 80, 
+            "sigma" : 12, 
+            "bias" : 0.6
+        
+        }, 
+        2 : {
+            "coefficient" : round(random.normalvariate(0.01,0.002), 3), 
+            "shift" : int(round(random.normalvariate(500,50))), 
+            "mean" : 100, 
+            "sigma" : 12, 
+            "bias" : 0.8
+        
+        },  
+    
+    }
     
     trackTargetNotes = {
-        0: blendTargetFunctions(song_length, round(random.normalvariate(0.01,0.002), 3), int(round(random.normalvariate(500,50))), 40, 20, 0.8), 
-        1: blendTargetFunctions(song_length, round(random.normalvariate(0.01,0.002), 3), int(round(random.normalvariate(500,50))), 60, 20, 0.2), 
-        2: blendTargetFunctions(song_length, round(random.normalvariate(0.01,0.002), 3), int(round(random.normalvariate(500,50))), 80, 20, 0.5)
+        0: blendTargetFunctions(song_length, trackVariables[0]["coefficient"], trackVariables[0]["shift"], trackVariables[0]["mean"], trackVariables[0]["sigma"], trackVariables[0]["bias"]), 
+        1: blendTargetFunctions(song_length, trackVariables[1]["coefficient"], trackVariables[1]["shift"], trackVariables[1]["mean"], trackVariables[1]["sigma"], trackVariables[1]["bias"]), 
+        2: blendTargetFunctions(song_length, trackVariables[2]["coefficient"], trackVariables[2]["shift"], trackVariables[2]["mean"], trackVariables[2]["sigma"], trackVariables[2]["bias"])
     }
+    
+    trackClosestNotes = {
+        0: [],
+        1: [], 
+        2: [],     
+    }
+    
         
     ##################
      
@@ -117,6 +144,9 @@ def createArray():
         noteLength = 1 + random.randint(0, currentChord["length"] - 1)
         noteArray[track][0] = asarray(currentNotes)
         
+        # keep track of the closest notes for plotting them
+        trackClosestNotes[track].append(0)
+        
         silence = False
         
         for t in range(1,song_length): 
@@ -142,11 +172,16 @@ def createArray():
         
             possibleNotes = generatePossibleNotes(currentChord)
             
+            #print(currentChord["root"], currentChord["notes"], possibleNotes)
+            
             targetNote = trackTargetNotes[track][t]
             
             #print(targetNote)
             
             closestNote = closestToTarget(possibleNotes, targetNote)
+            
+            # keep track of the closest notes for plotting them
+            trackClosestNotes[track].append(closestNote)
             
             # Lets also make the velocity normally distributed around the center
             
@@ -196,5 +231,7 @@ def createArray():
             j = j + 1
             k = k + 1
             
+    
+    plotNotes(song_length, num_tracks, trackTargetNotes, trackClosestNotes)
             
     return noteArray

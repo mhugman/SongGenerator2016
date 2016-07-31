@@ -32,7 +32,7 @@ def generateSine(length, coefficient, shift, mean, sigma):
     
     return y
     
-def generateRandomWalk(length, amplitude): 
+def generateRandomWalk(length, mean, amplitude): 
     
     # generates a list of y values
     y = []
@@ -76,13 +76,13 @@ def generateRandomWalk(length, amplitude):
             y.append(y[x - 1] + z)
             
         else: 
-            # Select a random starting point
-            y.append(random.choice(range(amplitude)))
+            # start at the mean
+            y.append(mean)
             
     return y
             
 def blendTargetFunctions(song_length, coefficient, shift, mean, sigma, bias): 
-    rw_values = generateRandomWalk(song_length, 127)
+    rw_values = generateRandomWalk(song_length, mean, 127)
     sine_values = generateSine(song_length, coefficient, shift, mean, sigma)
     
     
@@ -94,7 +94,7 @@ def blendTargetFunctions(song_length, coefficient, shift, mean, sigma, bias):
         sin_value = sine_values[x]
         
         # take the average of the target values
-        mean_value = int(round(float(bias * rw_value + ( 1 - bias) * sin_value) / float(2)))
+        mean_value = int(round(float(bias * rw_value + ( 1 - bias) * sin_value)))
         
         mean_values.append(mean_value)
     
